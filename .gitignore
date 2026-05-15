@@ -1,0 +1,16 @@
+# client_secret.json
+# rest_menu/*
+# .env
+# .gitignore
+# venv
+# __pycache__
+# cache/
+# pending_menu/
+.env
+client_secret.json
+__pycache__/
+*.pyc
+cache/
+logs/
+*.log
+pending_menu/
