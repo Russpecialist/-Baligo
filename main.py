@@ -47,10 +47,10 @@ register_approval_handlers(dp, bot)
 logger.info(f"После approval: {len(dp.message.handlers)} handlers")
 register_promotions_events_handlers(dp, bot)
 logger.info(f"После promotions_events: {len(dp.message.handlers)} handlers")
+register_ai_handlers(dp, bot)
+logger.info(f"После ai: {len(dp.message.handlers)} handlers")
 register_unhandled_handler(dp, bot)
 logger.info(f"После unhandled: {len(dp.message.handlers)} handlers")
-
-register_ai_handlers(dp, bot)
 
 
 async def shutdown_handler():
