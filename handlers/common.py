@@ -8,9 +8,11 @@ from database.queries import (
 )
 from utils.keyboards import get_main_menu_keyboard, get_regions_keyboard
 from handlers.user import show_regions_or_restaurants
+from handlers.ai_assistant import handle_ai_start
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 async def main_menu(message: Message, state: FSMContext):
     """Главное меню в зависимости от роли"""
@@ -18,22 +20,24 @@ async def main_menu(message: Message, state: FSMContext):
     await add_new_user(message)
     await add_log_users(message)
     role, status = (await get_user_role(message))[0]
-    
+
     if role == 'banned':
         await message.answer('⛔ Вы забанены')
         return
-    
+
     if status == 'inactive':
         await change_status_sql('active', message.chat.id)
         await message.answer('💚 Очень рады, что вы вернулись!')
-    
+
     if role == 'admin':
         # Админ меню
         # Проверяем, есть ли у админа рестораны
         admin_restaurants = await get_user_restaurants(message.chat.id)
-        has_restaurants = len(admin_restaurants) > 0 if admin_restaurants else False
-        
-        markup = get_main_menu_keyboard('admin', has_restaurants=has_restaurants)
+        has_restaurants = len(
+            admin_restaurants) > 0 if admin_restaurants else False
+
+        markup = get_main_menu_keyboard(
+            'admin', has_restaurants=has_restaurants)
         await message.answer('Что необходимо сделать?', reply_markup=markup)
         from states.bot_states import BotStates
         await state.set_state(BotStates.waiting_admin_action)
@@ -47,27 +51,33 @@ async def main_menu(message: Message, state: FSMContext):
         # Обычный пользователь - показываем регионы или рестораны
         await show_regions_or_restaurants(message, state, is_admin=False)
 
+
 async def start_handler(message: Message, state: FSMContext):
     """Обработчик команды /start"""
-    logger.info(f"✅ Обработчик /start вызван для пользователя {message.from_user.id}")
+    logger.info(
+        f"✅ Обработчик /start вызван для пользователя {message.from_user.id}")
     try:
         await main_menu(message, state)
     except Exception as e:
         logger.error(f"Ошибка в start_handler: {e}", exc_info=True)
         await message.answer("Произошла ошибка. Попробуйте позже.")
 
+
 async def main_menu_button_handler(message: Message, state: FSMContext):
     """Обработчик кнопки 'Вернуться в главное меню'"""
-    logger.info(f"✅ Обработчик 'Вернуться в главное меню' вызван для пользователя {message.from_user.id}")
+    logger.info(
+        f"✅ Обработчик 'Вернуться в главное меню' вызван для пользователя {message.from_user.id}")
     try:
         await main_menu(message, state)
     except Exception as e:
         logger.error(f"Ошибка в main_menu_button_handler: {e}", exc_info=True)
         await message.answer("Произошла ошибка. Попробуйте позже.")
 
+
 async def unhandled_message_handler(message: Message, state: FSMContext):
     """Обработчик для необработанных сообщений - возвращает пользователя в главное меню"""
-    logger.warning(f"⚠️ Необработанное сообщение от пользователя {message.from_user.id}: {message.text or message.content_type}")
+    logger.warning(
+        f"⚠️ Необработанное сообщение от пользователя {message.from_user.id}: {message.text or message.content_type}")
     try:
         await main_menu(message, state)
     except Exception as e:
@@ -76,27 +86,36 @@ async def unhandled_message_handler(message: Message, state: FSMContext):
             await message.answer("Произошла ошибка. Возвращаю вас в главное меню...")
             await main_menu(message, state)
         except Exception as e2:
-            logger.error(f"Критическая ошибка при возврате в главное меню: {e2}", exc_info=True)
+            logger.error(
+                f"Критическая ошибка при возврате в главное меню: {e2}", exc_info=True)
+
 
 def register_common_handlers(dp, bot):
     """Регистрация общих обработчиков"""
     logger.info("Начинаем регистрацию common handlers...")
-    
+
     # Регистрация обработчика команды /start
     try:
         dp.message.register(start_handler, Command("start"))
         logger.info("Обработчик /start зарегистрирован")
     except Exception as e:
         logger.error(f"Ошибка регистрации /start: {e}", exc_info=True)
-    
+
     # Регистрация обработчика кнопки "Вернуться в главное меню"
     try:
-        dp.message.register(main_menu_button_handler, F.text == "🏠 Вернуться в главное меню")
+        dp.message.register(main_menu_button_handler,
+                            F.text == "🏠 Вернуться в главное меню")
         logger.info("Обработчик 'Вернуться в главное меню' зарегистрирован")
     except Exception as e:
         logger.error(f"Ошибка регистрации кнопки: {e}", exc_info=True)
-    
-    logger.info(f"Общие обработчики зарегистрированы. Всего handlers: {len(dp.message.handlers)}")
+    try:
+        dp.message.register(handle_ai_start, F.text == "🤖 AI-ассистент")
+        logger.info("Обработчик AI-ассистента зарегистрирован")
+    except Exception as e:
+        logger.error(f"Ошибка регистрации AI-ассистента: {e}", exc_info=True)
+    logger.info(
+        f"Общие обработчики зарегистрированы. Всего handlers: {len(dp.message.handlers)}")
+
 
 def register_unhandled_handler(dp, bot):
     """Регистрация обработчика для необработанных сообщений (должен регистрироваться последним)"""
@@ -107,4 +126,5 @@ def register_unhandled_handler(dp, bot):
         dp.message.register(unhandled_message_handler)
         logger.info("Обработчик необработанных сообщений зарегистрирован")
     except Exception as e:
-        logger.error(f"Ошибка регистрации обработчика необработанных сообщений: {e}", exc_info=True)
+        logger.error(
+            f"Ошибка регистрации обработчика необработанных сообщений: {e}", exc_info=True)

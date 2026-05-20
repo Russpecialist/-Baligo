@@ -16,7 +16,7 @@ from handlers.approval import register_approval_handlers
 from handlers.promotions_events import register_promotions_events_handlers
 from middleware.role_check import RoleCheckMiddleware
 from utils.helpers import log_error
-
+from handlers.ai_assistant import register_ai_handlers
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +49,8 @@ register_promotions_events_handlers(dp, bot)
 logger.info(f"После promotions_events: {len(dp.message.handlers)} handlers")
 register_unhandled_handler(dp, bot)
 logger.info(f"После unhandled: {len(dp.message.handlers)} handlers")
+
+register_ai_handlers(dp, bot)
 
 
 async def shutdown_handler():
