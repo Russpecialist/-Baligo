@@ -74,13 +74,13 @@ async def main_menu_button_handler(message: Message, state: FSMContext):
 
 
 async def handle_user_menu(message: Message, state: FSMContext):
-    """Обработка главного меню пользователя"""
     if message.text == "🤖 AI-ассистент":
         await handle_ai_start(message, state)
+    elif message.text == "🌴 Выбрать район":
+        await show_regions_or_restaurants(message, state, is_admin=False)
     elif message.text == "🏠 Вернуться в главное меню":
         await main_menu(message, state)
     else:
-        # Любая другая кнопка — показываем районы
         await show_regions_or_restaurants(message, state, is_admin=False)
 
 

@@ -27,6 +27,7 @@ def get_main_menu_keyboard(role: str, has_restaurants: bool = False) -> ReplyKey
         ]
     else:  # user
         buttons = [
+            [KeyboardButton(text="🌴 Выбрать район")],
             [KeyboardButton(text="🤖 AI-ассистент")],
             [KeyboardButton(text="🏠 Вернуться в главное меню")]
 
