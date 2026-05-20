@@ -5,6 +5,7 @@ from aiogram.fsm.state import State, StatesGroup
 class BotStates(StatesGroup):
     # Общие состояния
     waiting_region = State()
+    waiting_user_menu = State()
     waiting_category = State()        # выбор категории партнёров
     waiting_restaurant = State()
     waiting_banquet_restaurant = State()
