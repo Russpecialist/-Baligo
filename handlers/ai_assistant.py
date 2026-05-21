@@ -1,9 +1,8 @@
-"""AI-ассистент по Бали на базе Groq (llama-3.3-70b) с веб-поиском"""
+"""AI-ассистент по Бали на базе OpenRouter (GPT-4o) с веб-поиском"""
 import os
 import json
 import logging
 import httpx
-from groq import AsyncGroq
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -11,7 +10,7 @@ from states.bot_states import BotStates
 
 logger = logging.getLogger(__name__)
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
 SYSTEM_PROMPT = """Ты — умный AI-ассистент приложения Bali.go, помогающий людям узнать всё о жизни и отдыхе на Бали.
 
@@ -87,6 +86,36 @@ async def do_web_search(query: str) -> str:
         return f"Не удалось выполнить поиск: {str(e)}"
 
 
+async def call_openrouter(messages: list, tools: list = None) -> dict:
+    """Вызов OpenRouter API"""
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://t.me/Bailgo_bot",
+        "X-Title": "Bali.go Bot"
+    }
+
+    payload = {
+        "model": "openai/gpt-4o",
+        "messages": messages,
+        "max_tokens": 1000,
+        "temperature": 0.7
+    }
+
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+
 def get_ai_keyboard() -> ReplyKeyboardMarkup:
     """Клавиатура в режиме AI-ассистента"""
     buttons = [
@@ -117,7 +146,7 @@ async def handle_ai_message(message: Message, state: FSMContext):
         await main_menu(message, state)
         return
 
-    if not GROQ_API_KEY:
+    if not OPENROUTER_API_KEY:
         await message.answer("❌ AI-ассистент временно недоступен. Обратитесь к администратору.")
         return
 
@@ -131,27 +160,20 @@ async def handle_ai_message(message: Message, state: FSMContext):
         history = history[-10:]
 
     try:
-        client = AsyncGroq(api_key=GROQ_API_KEY)
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *history
+        ]
 
         # Первый запрос — модель решает нужен ли поиск
-        response = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                *history
-            ],
-            tools=TOOLS,
-            tool_choice="auto",
-            max_tokens=1000,
-            temperature=0.7
-        )
-
-        response_message = response.choices[0].message
+        response_data = await call_openrouter(messages, tools=TOOLS)
+        response_message = response_data["choices"][0]["message"]
 
         # Если модель решила использовать поиск
-        if response_message.tool_calls:
-            tool_call = response_message.tool_calls[0]
-            search_query = json.loads(tool_call.function.arguments)["query"]
+        if response_message.get("tool_calls"):
+            tool_call = response_message["tool_calls"][0]
+            search_query = json.loads(
+                tool_call["function"]["arguments"])["query"]
 
             logger.info(f"AI выполняет поиск: {search_query}")
             await message.bot.send_chat_action(message.chat.id, "typing")
@@ -162,36 +184,29 @@ async def handle_ai_message(message: Message, state: FSMContext):
             messages_with_search = [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 *history,
-                {"role": "assistant", "content": None,
-                    "tool_calls": response_message.tool_calls},
+                response_message,
                 {
                     "role": "tool",
-                    "tool_call_id": tool_call.id,
+                    "tool_call_id": tool_call["id"],
                     "content": search_result
                 }
             ]
 
-            final_response = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages_with_search,
-                max_tokens=1000,
-                temperature=0.7
-            )
-            answer = final_response.choices[0].message.content
+            final_response = await call_openrouter(messages_with_search)
+            answer = final_response["choices"][0]["message"]["content"]
         else:
-            answer = response_message.content
+            answer = response_message["content"]
 
         history.append({"role": "assistant", "content": answer})
         await state.update_data(ai_history=history)
 
-        # Groq может вернуть Markdown — отправляем с parse_mode
         try:
             await message.answer(answer, parse_mode="Markdown")
         except Exception:
             await message.answer(answer)
 
     except Exception as e:
-        logger.error(f"Ошибка Groq API: {e}")
+        logger.error(f"Ошибка OpenRouter API: {e}")
         await message.answer(
             "😔 Произошла ошибка при обращении к AI. Попробуй ещё раз или вернись в главное меню."
         )
