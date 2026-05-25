@@ -100,6 +100,17 @@ async def main():
         # Запускаем кэширование в фоне, не блокируя запуск бота
         asyncio.create_task(background_cache())
 
+        async def background_sync():
+            from database.sync import sync_manager
+            while True:
+                try:
+                    await asyncio.sleep(1800)
+                    await sync_manager.export_all_tables()
+                    logger.info("Google Sheets синхронизирован")
+                except Exception as e:
+                    logger.error(f"Ошибка синхронизации: {e}")
+
+        asyncio.create_task(background_sync())
         # Настройка логирования для aiogram
         logging.getLogger('aiogram.event').setLevel(logging.INFO)
         logging.getLogger('aiogram.dispatcher').setLevel(logging.INFO)
