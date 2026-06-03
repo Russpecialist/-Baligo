@@ -17,6 +17,15 @@ from handlers.promotions_events import register_promotions_events_handlers
 from middleware.role_check import RoleCheckMiddleware
 from utils.helpers import log_error
 from handlers.ai_assistant import register_ai_handlers
+from handlers.events_bali import register_events_bali_handlers
+from handlers.admin_events_bali import (
+    handle_events_bali_action, handle_events_bali_region,
+    handle_events_bali_title, handle_events_bali_description,
+    handle_events_bali_url, handle_events_bali_photo, handle_events_bali_delete
+)
+from aiogram.filters import StateFilter
+from aiogram import F
+from states.bot_states import BotStates
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +58,15 @@ register_promotions_events_handlers(dp, bot)
 logger.info(f"После promotions_events: {len(dp.message.handlers)} handlers")
 register_ai_handlers(dp, bot)
 logger.info(f"После ai: {len(dp.message.handlers)} handlers")
+register_events_bali_handlers(dp, bot)
+dp.message.register(handle_events_bali_action, StateFilter(BotStates.waiting_events_bali_menu))
+dp.message.register(handle_events_bali_region, StateFilter(BotStates.waiting_events_bali_region))
+dp.message.register(handle_events_bali_title, StateFilter(BotStates.waiting_events_bali_title))
+dp.message.register(handle_events_bali_description, StateFilter(BotStates.waiting_events_bali_description))
+dp.message.register(handle_events_bali_url, StateFilter(BotStates.waiting_events_bali_url))
+dp.message.register(handle_events_bali_photo, StateFilter(BotStates.waiting_events_bali_photo))
+dp.message.register(handle_events_bali_photo, F.photo, StateFilter(BotStates.waiting_events_bali_photo))
+dp.message.register(handle_events_bali_delete, StateFilter(BotStates.waiting_events_bali_delete))
 register_unhandled_handler(dp, bot)
 logger.info(f"После unhandled: {len(dp.message.handlers)} handlers")
 

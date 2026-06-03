@@ -152,7 +152,9 @@ async def handle_admin_action(message: Message, state: FSMContext):
         markup = get_restaurants_list_keyboard(restaurant_names)
         await message.answer('Выберите ресторан для редактирования:', reply_markup=markup)
         await state.set_state(BotStates.waiting_restaurant_edit_selection)
-
+    elif message.text == "🎉 Управление мероприятиями":
+        from handlers.admin_events_bali import handle_events_bali_menu
+        await handle_events_bali_menu(message, state)
     else:
         await message.answer("Неизвестная команда администратора. Выберите из предложенных вариантов.")
         await main_menu(message, state)

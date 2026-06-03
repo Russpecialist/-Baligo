@@ -353,7 +353,10 @@ async def handle_category_selection(message: Message, state: FSMContext):
         from handlers.common import main_menu
         await main_menu(message, state)
         return
-
+    if text == "🎉 Мероприятия":
+        from handlers.events_bali import show_events_bali_list
+        await show_events_bali_list(message, state)
+        return
     if text not in CATEGORY_LABEL_TO_DB:
         await message.answer("Пожалуйста, выберите категорию из списка.")
         return
