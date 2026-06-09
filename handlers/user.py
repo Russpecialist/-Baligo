@@ -11,7 +11,8 @@ from database.queries import (
     get_restaurant_info, get_banquet_restaurants, get_user_role,
     get_promotions, get_events, get_restaurant_id_by_name,
     get_categories_in_region, get_restaurants_by_region_and_category,
-    CATEGORIES, CATEGORY_LABEL_TO_DB, log_user_activity
+    CATEGORIES, CATEGORY_LABEL_TO_DB, log_user_activity,
+    log_promotion_view,  # <-- новый импорт
 )
 from utils.keyboards import (
     get_regions_keyboard, get_categories_keyboard, get_restaurants_keyboard,
@@ -877,16 +878,26 @@ async def handle_menu_item(message: Message, state: FSMContext):
             await handle_menu_action(message, state)
 
 
-async def show_promotion_event(message: Message, state: FSMContext, items: list, index: int, item_type: str, restaurant_id: int):
-    """Показать акцию или событие с навигацией"""
+async def show_promotion_event(
+    message: Message,
+    state: FSMContext,
+    items: list,
+    index: int,
+    item_type: str,
+    restaurant_id: int,
+):
+    """Показать акцию или событие с навигацией и записью просмотра"""
     if not items or index < 0 or index >= len(items):
         return
+
     item = items[index]
     emoji = "🎁" if item_type == 'promotion' else "🎊"
     text = f"{emoji} {item['title']}\n\n"
     if item.get('description'):
         text += f"{item['description']}\n"
+
     markup = get_promotion_event_view_keyboard(index, len(items), item_type)
+
     await state.update_data(
         promotions_list=items if item_type == 'promotion' else None,
         events_list=items if item_type == 'event' else None,
@@ -894,10 +905,31 @@ async def show_promotion_event(message: Message, state: FSMContext, items: list,
         restaurant_id=restaurant_id,
         viewing_type=item_type
     )
+
     if item_type == 'promotion':
         await state.set_state(BotStates.viewing_promotions)
     else:
         await state.set_state(BotStates.viewing_events)
+
+    # --- Записываем просмотр ---
+    state_data = await state.get_data()
+    partner_name = None
+    info = state_data.get('restaurant_info')
+    if info:
+        if isinstance(info, (list, tuple)) and len(info) > 0:
+            partner_name = info[0] if isinstance(info[0], str) else (
+                info[0][0] if isinstance(info[0], (list, tuple)) else str(info[0]))
+        else:
+            partner_name = str(info) if info else None
+
+    await log_promotion_view(
+        chat_id=message.chat.id,
+        partner_name=partner_name,
+        promotion_id=item['id'] if item_type == 'promotion' else None,
+        event_id=item['id'] if item_type == 'event' else None,
+    )
+    # ---------------------------
+
     if item.get('photo_file_id'):
         try:
             await message.answer_photo(item['photo_file_id'], caption=text, reply_markup=markup)
@@ -943,6 +975,25 @@ async def handle_promotion_event_navigation(callback: CallbackQuery, state: FSMC
         markup = get_promotion_event_view_keyboard(
             new_index, len(items), item_type)
         await state.update_data(current_index=new_index)
+
+        # --- Записываем просмотр при навигации ---
+        partner_name = None
+        info = state_data.get('restaurant_info')
+        if info:
+            if isinstance(info, (list, tuple)) and len(info) > 0:
+                partner_name = info[0] if isinstance(info[0], str) else (
+                    info[0][0] if isinstance(info[0], (list, tuple)) else str(info[0]))
+            else:
+                partner_name = str(info) if info else None
+
+        await log_promotion_view(
+            chat_id=callback.from_user.id,
+            partner_name=partner_name,
+            promotion_id=item['id'] if item_type == 'promotion' else None,
+            event_id=item['id'] if item_type == 'event' else None,
+        )
+        # -----------------------------------------
+
         try:
             if item.get('photo_file_id'):
                 if callback.message.photo:

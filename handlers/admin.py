@@ -12,7 +12,8 @@ from database.queries import (
     change_role_sql, change_status_sql, get_all_chat_id, get_regions,
     get_pending_approvals, create_restaurant, get_all_restaurants,
     update_restaurant, add_user_restaurant, get_chat_id, delete_restaurant,
-    db_manager, CATEGORIES, CATEGORY_LABEL_TO_DB
+    db_manager, CATEGORIES, CATEGORY_LABEL_TO_DB,
+    get_promotion_views_stats,  # <-- новый импорт
 )
 from utils.telegram_helpers import get_chat_id_from_username
 from utils.keyboards import (
@@ -152,13 +153,92 @@ async def handle_admin_action(message: Message, state: FSMContext):
         markup = get_restaurants_list_keyboard(restaurant_names)
         await message.answer('Выберите ресторан для редактирования:', reply_markup=markup)
         await state.set_state(BotStates.waiting_restaurant_edit_selection)
+
     elif message.text == "🎉 Управление мероприятиями":
         from handlers.admin_events_bali import handle_events_bali_menu
         await handle_events_bali_menu(message, state)
+
+    elif message.text == "📊 Статистика просмотров":
+        await handle_stats_start(message, state)
+
     else:
         await message.answer("Неизвестная команда администратора. Выберите из предложенных вариантов.")
         await main_menu(message, state)
 
+
+# ========== Статистика просмотров ==========
+
+async def handle_stats_start(message: Message, state: FSMContext):
+    """Показать список партнёров для выбора статистики"""
+    restaurants = await get_all_restaurants()
+    if not restaurants:
+        await message.answer("Нет партнёров в базе.")
+        return
+
+    restaurant_names = [r['restaurant_name'] for r in restaurants]
+    buttons = [[KeyboardButton(text=name)] for name in restaurant_names]
+    buttons.append([KeyboardButton(text="🏠 Вернуться в главное меню")])
+    markup = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+
+    await message.answer(
+        "📊 Выберите партнёра для просмотра статистики:",
+        reply_markup=markup
+    )
+    await state.set_state(BotStates.waiting_stats_partner_selection)
+
+
+async def handle_stats_partner_selection(message: Message, state: FSMContext):
+    """Показать статистику просмотров выбранного партнёра"""
+    if message.text == "🏠 Вернуться в главное меню":
+        await main_menu(message, state)
+        return
+
+    partner_name = message.text
+
+    # Проверяем что такой партнёр существует
+    restaurants = await get_all_restaurants()
+    restaurant_names = [r['restaurant_name'] for r in restaurants]
+    if partner_name not in restaurant_names:
+        await message.answer("Партнёр не найден. Выберите из списка.")
+        return
+
+    stats = await get_promotion_views_stats(partner_name=partner_name)
+
+    if not stats or stats.get('total', 0) == 0:
+        await message.answer(
+            f"📊 Статистика: <b>{partner_name}</b>\n\n"
+            "Просмотров пока нет.",
+            parse_mode="HTML"
+        )
+        return
+
+    # Формируем текст статистики
+    lines = [
+        f"📊 Статистика: <b>{partner_name}</b>\n",
+        f"👁 Всего просмотров: <b>{stats['total']}</b>",
+        f"🎁 Просмотров акций: <b>{stats['promotions_total']}</b>",
+        f"🎊 Просмотров событий: <b>{stats['events_total']}</b>",
+        f"👤 Уникальных пользователей: <b>{stats['unique_users']}</b>",
+    ]
+
+    # Топ акций
+    if stats.get('by_promotion'):
+        lines.append("\n🔝 Топ акций:")
+        for i, item in enumerate(stats['by_promotion'], 1):
+            lines.append(
+                f"  {i}. Акция #{item['promotion_id']} — {item['views']} просм.")
+
+    # Топ событий
+    if stats.get('by_event'):
+        lines.append("\n🔝 Топ событий:")
+        for i, item in enumerate(stats['by_event'], 1):
+            lines.append(
+                f"  {i}. Событие #{item['event_id']} — {item['views']} просм.")
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+# ========== Остальные обработчики ==========
 
 async def handle_username_input(message: Message, state: FSMContext):
     """Обработка ввода username для изменения роли"""
@@ -681,6 +761,10 @@ def register_admin_handlers(dp, bot):
         BotStates.waiting_restaurant_edit_all))
     dp.message.register(handle_restaurant_delete_confirm, StateFilter(
         BotStates.waiting_restaurant_delete_confirm))
+
+    # Статистика просмотров
+    dp.message.register(handle_stats_partner_selection, StateFilter(
+        BotStates.waiting_stats_partner_selection))
 
     from handlers.restaurant import handle_menu_manager_action, handle_menu_upload
     dp.message.register(handle_menu_manager_action, StateFilter(

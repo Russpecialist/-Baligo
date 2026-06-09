@@ -17,6 +17,7 @@ def get_main_menu_keyboard(role: str, has_restaurants: bool = False) -> ReplyKey
             [KeyboardButton(text="✉ Отправить рассылку")],
             [KeyboardButton(text="📋 Запросы на согласование")],
             [KeyboardButton(text="🎉 Управление мероприятиями")],
+            [KeyboardButton(text="📊 Статистика просмотров")],
         ]
         # Если у админа есть рестораны, добавляем кнопку личного кабинета
         if has_restaurants:

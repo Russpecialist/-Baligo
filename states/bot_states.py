@@ -69,7 +69,6 @@ class BotStates(StatesGroup):
     viewing_promotions = State()  # Просмотр акций
     viewing_events = State()  # Просмотр событий
 
-
     # Состояния для мероприятий Bali
     viewing_events_bali = State()
     waiting_events_bali_menu = State()
@@ -79,3 +78,7 @@ class BotStates(StatesGroup):
     waiting_events_bali_url = State()
     waiting_events_bali_photo = State()
     waiting_events_bali_delete = State()
+
+    # Состояния для статистики просмотров
+    # Выбор партнёра для просмотра статистики
+    waiting_stats_partner_selection = State()

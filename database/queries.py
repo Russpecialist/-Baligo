@@ -1174,6 +1174,133 @@ async def log_user_activity(
         )
     except Exception as e:
         logger.error(f"Ошибка логирования активности: {e}")
+
+
+# ========== Функции для работы со счётчиком просмотров ==========
+
+async def log_promotion_view(
+    chat_id: int,
+    partner_name: str,
+    promotion_id: int = None,
+    event_id: int = None,
+) -> None:
+    """
+    Записывает просмотр акции или события в таблицу promotion_views.
+
+    Вызывается каждый раз при показе карточки пользователю,
+    включая навигацию по списку (каждый показ = просмотр).
+
+    Args:
+        chat_id:       Telegram chat_id пользователя.
+        partner_name:  Название партнёра (ресторана).
+        promotion_id:  ID акции (promotions.id), если показывается акция.
+        event_id:      ID события (events.id), если показывается событие.
+    """
+    try:
+        query = '''
+            INSERT INTO promotion_views (chat_id, promotion_id, event_id, partner_name)
+            VALUES ($1, $2, $3, $4);
+        '''
+        await db_manager.execute_query(query, chat_id, promotion_id, event_id, partner_name)
+        logger.debug(
+            f"Просмотр записан: chat_id={chat_id}, "
+            f"promotion_id={promotion_id}, event_id={event_id}, partner={partner_name}"
+        )
+    except Exception as e:
+        # Не бросаем исключение — ошибка счётчика не должна ломать UX
+        logger.error(f"Ошибка записи просмотра: {e}")
+
+
+async def get_promotion_views_stats(
+    restaurant_id: int = None,
+    partner_name: str = None,
+) -> Dict:
+    """
+    Возвращает статистику просмотров для партнёра.
+
+    Можно передать либо restaurant_id (тогда имя подтянется из БД),
+    либо напрямую partner_name.
+
+    Returns:
+        {
+            "total": int,               # всего просмотров
+            "promotions_total": int,    # просмотров акций
+            "events_total": int,        # просмотров событий
+            "unique_users": int,        # уникальных пользователей
+            "by_promotion": [           # топ акций
+                {"promotion_id": int, "views": int}, ...
+            ],
+            "by_event": [               # топ событий
+                {"event_id": int, "views": int}, ...
+            ],
+        }
+    """
+    try:
+        # Определяем имя партнёра, если передан только restaurant_id
+        if partner_name is None and restaurant_id is not None:
+            row = await db_manager.fetchrow_query(
+                'SELECT restaurant_name FROM restaurant WHERE restaurant_id = $1;',
+                restaurant_id
+            )
+            if row:
+                partner_name = row['restaurant_name']
+
+        if partner_name is None:
+            logger.warning(
+                "get_promotion_views_stats: не указан ни partner_name, ни restaurant_id")
+            return {}
+
+        # Общая статистика по партнёру
+        total_query = '''
+            SELECT
+                COUNT(*)                                        AS total,
+                COUNT(*) FILTER (WHERE promotion_id IS NOT NULL) AS promotions_total,
+                COUNT(*) FILTER (WHERE event_id IS NOT NULL)     AS events_total,
+                COUNT(DISTINCT chat_id)                          AS unique_users
+            FROM promotion_views
+            WHERE partner_name = $1;
+        '''
+        total_row = await db_manager.fetchrow_query(total_query, partner_name)
+
+        # Топ акций
+        promo_query = '''
+            SELECT promotion_id, COUNT(*) AS views
+            FROM promotion_views
+            WHERE partner_name = $1 AND promotion_id IS NOT NULL
+            GROUP BY promotion_id
+            ORDER BY views DESC;
+        '''
+        promo_rows = await db_manager.fetch_query(promo_query, partner_name)
+
+        # Топ событий
+        event_query = '''
+            SELECT event_id, COUNT(*) AS views
+            FROM promotion_views
+            WHERE partner_name = $1 AND event_id IS NOT NULL
+            GROUP BY event_id
+            ORDER BY views DESC;
+        '''
+        event_rows = await db_manager.fetch_query(event_query, partner_name)
+
+        return {
+            "total": total_row['total'] if total_row else 0,
+            "promotions_total": total_row['promotions_total'] if total_row else 0,
+            "events_total": total_row['events_total'] if total_row else 0,
+            "unique_users": total_row['unique_users'] if total_row else 0,
+            "by_promotion": [
+                {"promotion_id": r['promotion_id'], "views": r['views']}
+                for r in promo_rows
+            ],
+            "by_event": [
+                {"event_id": r['event_id'], "views": r['views']}
+                for r in event_rows
+            ],
+        }
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики просмотров: {e}")
+        return {}
+
+
 # ========== Инициализация и закрытие ==========
 
 
