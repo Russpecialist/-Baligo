@@ -13,7 +13,8 @@ from database.queries import (
     get_pending_approvals, create_restaurant, get_all_restaurants,
     update_restaurant, add_user_restaurant, get_chat_id, delete_restaurant,
     db_manager, CATEGORIES, CATEGORY_LABEL_TO_DB,
-    get_promotion_views_stats,  # <-- новый импорт
+    get_promotion_views_stats, get_promotions, get_events,
+    get_restaurant_id_by_name,
 )
 from utils.telegram_helpers import get_chat_id_from_username
 from utils.keyboards import (
@@ -181,14 +182,14 @@ async def handle_stats_start(message: Message, state: FSMContext):
     markup = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
     await message.answer(
-        "📊 Выберите партнёра для просмотра статистики:",
+        "📊 Выберите партнёра для формирования отчёта:",
         reply_markup=markup
     )
     await state.set_state(BotStates.waiting_stats_partner_selection)
 
 
 async def handle_stats_partner_selection(message: Message, state: FSMContext):
-    """Показать статистику просмотров выбранного партнёра"""
+    """Сформировать и отправить PDF-отчёт по выбранному партнёру"""
     if message.text == "🏠 Вернуться в главное меню":
         await main_menu(message, state)
         return
@@ -202,40 +203,76 @@ async def handle_stats_partner_selection(message: Message, state: FSMContext):
         await message.answer("Партнёр не найден. Выберите из списка.")
         return
 
-    stats = await get_promotion_views_stats(partner_name=partner_name)
+    loading_msg = await message.answer("⏳ Формирую отчёт, подождите...")
 
-    if not stats or stats.get('total', 0) == 0:
-        await message.answer(
-            f"📊 Статистика: <b>{partner_name}</b>\n\n"
-            "Просмотров пока нет.",
-            parse_mode="HTML"
+    try:
+        # Получаем статистику и данные
+        stats = await get_promotion_views_stats(partner_name=partner_name)
+        restaurant_id = await get_restaurant_id_by_name(partner_name)
+
+        promotions_raw = await get_promotions(restaurant_id, status='approved') if restaurant_id else []
+        events_raw = await get_events(restaurant_id, status='approved') if restaurant_id else []
+
+        # Совмещаем акции/события с данными просмотров
+        promo_views_map = {
+            item['promotion_id']: item['views']
+            for item in stats.get('by_promotion', [])
+        }
+        event_views_map = {
+            item['event_id']: item['views']
+            for item in stats.get('by_event', [])
+        }
+
+        promotions_detail = sorted([
+            {'title': p['title'], 'views': promo_views_map.get(
+                p['id'], 0), 'promotion_id': p['id']}
+            for p in promotions_raw
+        ], key=lambda x: x['views'], reverse=True)
+
+        events_detail = sorted([
+            {'title': e['title'], 'views': event_views_map.get(
+                e['id'], 0), 'event_id': e['id']}
+            for e in events_raw
+        ], key=lambda x: x['views'], reverse=True)
+
+        # Генерируем PDF
+        from utils.report_generator import generate_partner_report
+        pdf_path = await generate_partner_report(
+            partner_name=partner_name,
+            stats=stats,
+            promotions_detail=promotions_detail,
+            events_detail=events_detail,
         )
-        return
 
-    # Формируем текст статистики
-    lines = [
-        f"📊 Статистика: <b>{partner_name}</b>\n",
-        f"👁 Всего просмотров: <b>{stats['total']}</b>",
-        f"🎁 Просмотров акций: <b>{stats['promotions_total']}</b>",
-        f"🎊 Просмотров событий: <b>{stats['events_total']}</b>",
-        f"👤 Уникальных пользователей: <b>{stats['unique_users']}</b>",
-    ]
+        try:
+            await loading_msg.delete()
+        except Exception:
+            pass
 
-    # Топ акций
-    if stats.get('by_promotion'):
-        lines.append("\n🔝 Топ акций:")
-        for i, item in enumerate(stats['by_promotion'], 1):
-            lines.append(
-                f"  {i}. Акция #{item['promotion_id']} — {item['views']} просм.")
+        if pdf_path:
+            document = FSInputFile(
+                pdf_path,
+                filename=f"stats_{partner_name[:30]}.pdf"
+            )
+            await message.answer_document(
+                document,
+                caption=f"📊 Отчёт по просмотрам: <b>{partner_name}</b>",
+                parse_mode="HTML"
+            )
+            try:
+                os.unlink(pdf_path)
+            except Exception:
+                pass
+        else:
+            await message.answer("❌ Не удалось сформировать отчёт. Попробуйте позже.")
 
-    # Топ событий
-    if stats.get('by_event'):
-        lines.append("\n🔝 Топ событий:")
-        for i, item in enumerate(stats['by_event'], 1):
-            lines.append(
-                f"  {i}. Событие #{item['event_id']} — {item['views']} просм.")
-
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Ошибка формирования отчёта для {partner_name}: {e}")
+        try:
+            await loading_msg.delete()
+        except Exception:
+            pass
+        await message.answer("❌ Произошла ошибка при формировании отчёта.")
 
 
 # ========== Остальные обработчики ==========
