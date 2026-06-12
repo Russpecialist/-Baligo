@@ -253,7 +253,7 @@ async def generate_partner_report(
         now = datetime.now().strftime('%d.%m.%Y %H:%M')
 
         # ── Шапка ──
-        story.append(Paragraph("Bali.go", styles['title']))
+        story.append(Paragraph("Bali2go", styles['title']))
         story.append(Paragraph("Отчёт по просмотрам", styles['subtitle']))
         story.append(Spacer(1, 0.2*cm))
         story.append(HRFlowable(width="100%", thickness=2,
@@ -315,7 +315,7 @@ async def generate_partner_report(
                      color=colors.HexColor('#E0E0E0')))
         story.append(Spacer(1, 0.2*cm))
         story.append(Paragraph(
-            f"Сформировано автоматически · Bali.go · {now}",
+            f"Сформировано автоматически · Bali2go · {now}",
             styles['footer']
         ))
 

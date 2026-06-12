@@ -47,7 +47,7 @@ async def main_menu(message: Message, state: FSMContext):
         # Обычный пользователь — показываем меню с кнопкой AI
         from states.bot_states import BotStates
         markup = get_main_menu_keyboard('user')
-        await message.answer('🌴 Добро пожаловать в Bali.go!', reply_markup=markup)
+        await message.answer('🌴 Добро пожаловать в Bali2go!', reply_markup=markup)
         await state.set_state(BotStates.waiting_user_menu)
 
 
